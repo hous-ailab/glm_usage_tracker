@@ -17,12 +17,22 @@ class ZaiUsageStore: ObservableObject {
 
     private var apiKey: String?
     private var timer: Timer?
-    private let configPath: String
+    let configPath: String
+    let settingsKey = "ZaiUsageTracker_APIKey"
 
     init() {
-        let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
-        let projectDir = NSString(string: homeDir).appendingPathComponent("Downloads/zai-usage-tracker")
-        self.configPath = NSString(string: projectDir).appendingPathComponent(".zai_apikey.json")
+        // 使用 Bundle 获取资源路径，确保即使项目移动也能找到配置文件
+        // 对于直接编译的 Swift 应用，resourcePath 是二进制文件所在目录
+        let resourcePath: String
+        if let path = Bundle.main.resourcePath {
+            resourcePath = path
+        } else {
+            status = "无法获取应用资源路径"
+            self.configPath = ""
+            return
+        }
+        // 配置文件在资源目录中（与二进制文件同级）
+        self.configPath = (resourcePath as NSString).appendingPathComponent(".zai_apikey.json")
         loadApiKey()
         startTimer()
         fetchUsage()
@@ -33,6 +43,16 @@ class ZaiUsageStore: ObservableObject {
     }
 
     private func loadApiKey() {
+        // 优先从 UserDefaults 读取
+        if let savedKey = UserDefaults.standard.string(forKey: settingsKey), !savedKey.isEmpty {
+            os_log("API key loaded from UserDefaults")
+            apiKey = savedKey
+            return
+        }
+        
+        os_log("No API key in UserDefaults, trying config file")
+        
+        // 如果 UserDefaults 没有，尝试从配置文件读取
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: configPath)),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let key = json["apiKey"] as? String else {
@@ -40,6 +60,17 @@ class ZaiUsageStore: ObservableObject {
             return
         }
         apiKey = key
+        os_log("API key loaded from config file")
+    }
+
+    func saveApiKey(_ key: String) {
+        UserDefaults.standard.set(key, forKey: settingsKey)
+        apiKey = key
+    }
+
+    func clearApiKey() {
+        UserDefaults.standard.removeObject(forKey: settingsKey)
+        apiKey = nil
     }
 
     private func startTimer() {
@@ -309,19 +340,112 @@ struct MenuBarView: View {
             }
             .keyboardShortcut("r", modifiers: .command)
 
+            Button("配置 API Key") {
+                showApiKeyInput = true
+            }
+
             Button("退出") {
                 NSApplication.shared.terminate(nil)
             }
             .keyboardShortcut("q", modifiers: .command)
         }
         .padding(12)
+        .sheet(isPresented: $showApiKeyInput) {
+            ApiKeyConfigView(store: store)
+        }
     }
+
+    @State private var showApiKeyInput = false
 
     private func formatNumber(_ num: Int) -> String {
         if num >= 1_000_000_000 { return String(format: "%.2fB", Double(num) / 1_000_000_000) }
         if num >= 1_000_000 { return String(format: "%.2fM", Double(num) / 1_000_000) }
         if num >= 1_000 { return String(format: "%.2fK", Double(num) / 1_000) }
         return "\(num)"
+    }
+}
+
+struct ApiKeyConfigView: View {
+    @ObservedObject var store: ZaiUsageStore
+    @Environment(\.presentationMode) var presentationMode
+    
+    @State private var apiKey = ""
+    @State private var message = ""
+    @State private var showMessage = false
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("配置 API Key")
+                .font(.headline)
+            
+            Text("请输入您的 Z.ai API Key，用于查询用量统计")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            
+            VStack(alignment: .leading, spacing: 8) {
+                Text("API Key")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                
+                SecureField("输入 API Key", text: $apiKey)
+                    .padding(8)
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(6)
+                    .font(.system(.body, design: .monospaced))
+            }
+            .padding(.horizontal)
+            
+            if showMessage {
+                Text(message)
+                    .foregroundColor(message.contains("成功") ? .green : .red)
+                    .font(.caption)
+                    .padding(.horizontal)
+            }
+            
+            HStack {
+                Button("取消") {
+                    presentationMode.wrappedValue.dismiss()
+                }
+                .padding(.horizontal)
+                
+                Spacer()
+                
+                Button("保存") {
+                    if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        message = "API Key 不能为空"
+                        showMessage = true
+                        return
+                    }
+                    store.saveApiKey(apiKey.trimmingCharacters(in: .whitespacesAndNewlines))
+                    message = "API Key 已保存！"
+                    showMessage = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                }
+                .padding(.horizontal)
+            }
+            .padding(.top)
+        }
+        .padding()
+        .frame(width: 350)
+        .onAppear {
+            // 优先从 UserDefaults 读取，如果不存在再从文件读取
+            if let savedKey = UserDefaults.standard.string(forKey: store.settingsKey), !savedKey.isEmpty {
+                self.apiKey = savedKey
+            } else {
+                // 尝试从文件读取（只读，不修改）
+                do {
+                    let data = try Data(contentsOf: URL(fileURLWithPath: store.configPath))
+                    if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let key = json["apiKey"] as? String {
+                        self.apiKey = key
+                    }
+                } catch {
+                    // 文件不存在或读取失败，保持空
+                }
+            }
+        }
     }
 }
 

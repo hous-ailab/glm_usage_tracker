@@ -22,6 +22,14 @@ if [ ! -f "$PROJECT_DIR/build/ZaiUsageTracker" ]; then
     echo "✅ 编译完成"
 fi
 
+# 复制 API key 配置文件到 build 目录，确保 Bundle 中包含配置文件
+if [ -f "$PROJECT_DIR/.zai_apikey.json" ]; then
+    cp "$PROJECT_DIR/.zai_apikey.json" "$PROJECT_DIR/build/.zai_apikey.json"
+    echo "📋 已复制 API key 配置文件到 build 目录"
+else
+    echo "⚠️  警告: .zai_apikey.json 不存在，请先配置 API key"
+fi
+
 mkdir -p "$HOME/Library/LaunchAgents"
 
 sed "s|__PROJECT_DIR__|$PROJECT_DIR|g" "$PLIST_SRC" > "$PLIST_DST"

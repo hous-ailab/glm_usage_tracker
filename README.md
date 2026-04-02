@@ -41,6 +41,8 @@ node zai-cli-js.js check
 bash install_launchd.sh
 ```
 
+✅ **自动复制 API key 到 build 目录，即使移动项目也能正常工作**
+
 ---
 
 ## 项目结构
