@@ -43,6 +43,9 @@ bash install_launchd.sh
 
 ✅ **自动复制 API key 到 build 目录，即使移动项目也能正常工作**
 
+效果：
+<img width="702" height="944" alt="c1533e3efa81e8bf5ef20d693405a020" src="https://github.com/user-attachments/assets/9511c7cb-1bda-4c79-9c61-f0c9c030f383" />
+
 ---
 
 ## 项目结构
